@@ -1,11 +1,9 @@
-// app/course/[courseId].tsx
-
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { arrayUnion, collection, doc, onSnapshot, query, where, writeBatch } from 'firebase/firestore';
+import { arrayUnion, doc, DocumentSnapshot, getDoc, onSnapshot, writeBatch } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Appbar, Button, Card, List, Text } from 'react-native-paper';
-import AddStudentModal from '../../components/AddStudentModal'; // Importamos el nuevo modal
+import AddStudentModal from '../../components/AddStudentModal';
 import { db } from '../../firebaseConfig';
 
 // Interfaces para tipado
@@ -17,9 +15,9 @@ interface Course {
 }
 
 interface Student {
-    id: string;
-    fullName: string;
-    studentId: string;
+  id: string;
+  fullName: string;
+  studentId: string;
 }
 
 const CourseDetailScreen = () => {
@@ -31,15 +29,26 @@ const CourseDetailScreen = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isStudentModalVisible, setStudentModalVisible] = useState(false);
 
-  // Efecto para obtener los datos del curso
   useEffect(() => {
     if (!courseId) return;
-    const docRef = doc(db, 'courses', courseId);
+    const courseRef = doc(db, 'courses', courseId);
     
-    // Usamos onSnapshot para que los datos del curso (como la lista de IDs) se actualicen en tiempo real
-    const unsubscribeCourse = onSnapshot(docRef, (docSnap) => {
+    const unsubscribeCourse = onSnapshot(courseRef, (docSnap) => {
       if (docSnap.exists()) {
-        setCourse({ ...docSnap.data() } as Course);
+        const courseData = docSnap.data() as Course;
+        setCourse(courseData);
+        
+        if (courseData.studentIds && courseData.studentIds.length > 0) {
+          const studentPromises = courseData.studentIds.map(id => getDoc(doc(db, 'students', id)));
+          Promise.all(studentPromises).then(studentSnaps => {
+            const studentList = studentSnaps
+              .filter(snap => snap.exists())
+              .map((snap: DocumentSnapshot) => ({ id: snap.id, ...snap.data() } as Student));
+            setStudents(studentList);
+          });
+        } else {
+          setStudents([]);
+        }
       } else {
         console.log("No se encontró el curso!");
       }
@@ -49,46 +58,20 @@ const CourseDetailScreen = () => {
     return () => unsubscribeCourse();
   }, [courseId]);
 
-  // Efecto para obtener los detalles de los estudiantes una vez que tenemos sus IDs
-  useEffect(() => {
-    if (!course?.studentIds || course.studentIds.length === 0) {
-        setStudents([]); // Si no hay IDs, la lista de estudiantes está vacía
-        return;
-    }
-
-    const q = query(collection(db, 'students'), where('studentId', 'in', course.studentIds));
-    const unsubscribeStudents = onSnapshot(q, (snapshot) => {
-        const studentList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student));
-        setStudents(studentList);
-    });
-
-    return () => unsubscribeStudents();
-  }, [course]); // Se ejecuta cada vez que los datos del curso cambian
-
   const handleSaveStudent = async (studentData: { fullName: string; studentId: string }) => {
     if (!courseId) return;
-
-    // Usamos un "batch write" para asegurar que ambas operaciones (crear y actualizar)
-    // se completen exitosamente o ninguna lo haga.
     const batch = writeBatch(db);
-
-    // 1. Referencia al nuevo documento en la colección 'students'
     const studentDocRef = doc(db, 'students', studentData.studentId);
     batch.set(studentDocRef, { fullName: studentData.fullName, studentId: studentData.studentId });
-
-    // 2. Referencia al documento del curso actual para actualizarlo
     const courseDocRef = doc(db, 'courses', courseId);
     batch.update(courseDocRef, { studentIds: arrayUnion(studentData.studentId) });
-
     try {
-      await batch.commit(); // Ejecutamos ambas operaciones
-      setStudentModalVisible(false); // Cerramos el modal
+      await batch.commit();
+      setStudentModalVisible(false);
     } catch (error) {
       console.error("Error al añadir estudiante: ", error);
-      // Aquí podrías mostrar una alerta o modal de error
     }
   };
-
 
   if (isLoading) {
     return <ActivityIndicator animating={true} size="large" style={styles.loader} />;
@@ -105,24 +88,47 @@ const CourseDetailScreen = () => {
         <Appbar.Content title={course.name} subtitle={course.groupName} />
       </Appbar.Header>
 
-      {/* Usamos un FlatList como contenedor principal para poder hacer scroll */}
       <FlatList
         data={students}
         keyExtractor={(item) => item.id}
-        renderItem={({item}) => (
-            <List.Item
-                title={item.fullName}
-                description={`ID: ${item.studentId}`}
-                left={props => <List.Icon {...props} icon="account" />}
-            />
+        renderItem={({ item }) => (
+          <List.Item
+            title={item.fullName}
+            description={`ID: ${item.studentId}`}
+            left={props => <List.Icon {...props} icon="account" />}
+          />
         )}
         ListHeaderComponent={
           <>
             <Card style={styles.card}>
               <Card.Content>
                 <Text variant="titleLarge" style={styles.sectionTitle}>Asistencia</Text>
-                <Button icon="qrcode-scan" mode="contained" onPress={() => {}} style={styles.mainButton} labelStyle={{ paddingVertical: 10, fontSize: 18 }}>
+                <Button
+                  icon="qrcode-scan"
+                  mode="contained"
+                  onPress={() => router.push({ pathname: '/scanner', params: { courseId } })}
+                  style={styles.mainButton}
+                  labelStyle={{ paddingVertical: 10, fontSize: 18 }}
+                >
                   Iniciar Pase de Lista
+                </Button>
+              </Card.Content>
+            </Card>
+
+            <Card style={styles.card}>
+              <Card.Content>
+                <Text variant="titleLarge" style={styles.sectionTitle}>Historial</Text>
+                {/* 👇 BOTÓN CORREGIDO 👇 */}
+                <Button
+                  icon="history"
+                  mode="outlined"
+                  onPress={() => router.push({ 
+                    pathname: "/attendanceHistory/[courseId]", 
+                    params: { courseId } 
+                  })}
+                  style={{ marginTop: 16 }}
+                >
+                  Ver Historial de Asistencia
                 </Button>
               </Card.Content>
             </Card>
@@ -139,9 +145,7 @@ const CourseDetailScreen = () => {
             </Card>
           </>
         }
-        ListEmptyComponent={
-            <Text style={styles.placeholderText}>No hay estudiantes inscritos en este curso.</Text>
-        }
+        ListEmptyComponent={<Text style={styles.placeholderText}>No hay estudiantes inscritos.</Text>}
         contentContainerStyle={styles.content}
       />
 
@@ -157,8 +161,8 @@ const CourseDetailScreen = () => {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  content: { padding: 16 },
-  card: { marginBottom: 16 },
+  content: { paddingBottom: 20 },
+  card: { marginHorizontal: 16, marginTop: 16 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   sectionTitle: { fontWeight: 'bold' },
   mainButton: { marginTop: 16, borderRadius: 30 },

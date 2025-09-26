@@ -54,7 +54,10 @@ const RootLayoutNav = () => {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
       <Stack.Screen name="register" options={{ presentation: 'modal', headerShown: false }} />
-      <Stack.Screen name="scanner" options={{ presentation: 'modal', headerShown: false }} />
+      <Stack.Screen name="scanner" options={{ presentation: 'fullScreenModal', headerShown: false }} />
+      {/* 👇 NUEVAS PANTALLAS DE HISTORIAL REGISTRADAS 👇 */}
+      <Stack.Screen name="attendanceHistory/[courseId]" options={{ headerShown: false }} />
+      <Stack.Screen name="attendanceDetail/[recordId]" options={{ headerShown: false }} />
     </Stack>
   );
 };
