@@ -1,98 +1,121 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+// app/(tabs)/index.tsx
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { Link } from 'expo-router'; // Importamos Link para la navegación
+import { addDoc, collection, onSnapshot, query, where } from 'firebase/firestore';
+import React, { useEffect, useState } from 'react';
+import { FlatList, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Appbar, Card, FAB, Text } from 'react-native-paper';
+import AddCourseModal from '../../components/AddCourseModal'; // Importamos el componente modal
+import { auth, db } from '../../firebaseConfig';
 
-export default function HomeScreen() {
+// Definimos una interfaz para la estructura de un curso
+interface Course {
+  id: string;
+  name: string;
+  groupName: string;
+  schoolYear: string;
+}
+
+export default function CoursesScreen() {
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isModalVisible, setModalVisible] = useState(false);
+
+  useEffect(() => {
+    // Nos aseguramos de que el usuario esté autenticado antes de hacer la consulta
+    if (!auth.currentUser) {
+        setIsLoading(false);
+        return;
+    };
+
+    // Creamos una consulta para obtener solo los cursos del profesor actual
+    const q = query(collection(db, 'courses'), where('teacherId', '==', auth.currentUser.uid));
+
+    // onSnapshot crea un listener en tiempo real. ¡La lista se actualizará sola!
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const coursesData: Course[] = [];
+      querySnapshot.forEach((doc) => {
+        coursesData.push({ id: doc.id, ...doc.data() } as Course);
+      });
+      setCourses(coursesData);
+      setIsLoading(false);
+    }, (error) => {
+        // Manejo de errores de la consulta
+        console.error("Error al obtener los cursos: ", error);
+        setIsLoading(false);
+    });
+
+    // Limpiamos el listener al desmontar el componente para evitar fugas de memoria
+    return () => unsubscribe();
+  }, []);
+
+  const handleSaveCourse = async (courseData: { name: string; groupName: string; schoolYear: string }) => {
+    if (!auth.currentUser) return;
+
+    try {
+      await addDoc(collection(db, 'courses'), {
+        ...courseData,
+        teacherId: auth.currentUser.uid,
+        studentIds: [], // Inicializamos la lista de estudiantes vacía
+      });
+      setModalVisible(false); // Cerramos el modal al guardar exitosamente
+    } catch (error) {
+      console.error("Error al guardar el curso: ", error);
+      // Aquí se podría mostrar un modal o notificación de error al usuario
+    }
+  };
+
+  if (isLoading) {
+    return <ActivityIndicator animating={true} size="large" style={styles.loader} />;
+  }
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <View style={styles.container}>
+      <Appbar.Header>
+        <Appbar.Content title={`Mis Cursos (${courses.length})`} />
+      </Appbar.Header>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+      <FlatList
+        data={courses}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <Link href={{ pathname: "/course/[courseId]", params: { courseId: item.id } }} asChild>
+            <Card style={styles.card}>
+              <Card.Title
+                title={item.name}
+                subtitle={`${item.groupName} - ${item.schoolYear}`}
+              />
+            </Card>
+          </Link>
+        )}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text variant="headlineSmall">No tienes cursos</Text>
+            <Text variant="bodyMedium">Presiona el botón + para añadir tu primer curso.</Text>
+          </View>
+        }
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: 80 }}
+      />
+
+      <FAB
+        icon="plus"
+        style={styles.fab}
+        onPress={() => setModalVisible(true)}
+      />
+
+      <AddCourseModal
+        visible={isModalVisible}
+        onDismiss={() => setModalVisible(false)}
+        onSave={handleSaveCourse}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
+  container: { flex: 1 },
+  loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  card: { marginHorizontal: 16, marginTop: 16, elevation: 2 },
+  fab: { position: 'absolute', margin: 16, right: 0, bottom: 0 },
+  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, textAlign: 'center' },
 });
