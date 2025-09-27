@@ -1,112 +1,196 @@
 // app/attendanceHistory/[courseId].tsx
+import { db } from '@/firebaseConfig';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { collection, doc, onSnapshot, orderBy, query, where } from 'firebase/firestore';
+import React, { useEffect, useMemo, useState } from 'react';
+import { SectionList, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Avatar, Divider, IconButton, Text, Title } from 'react-native-paper';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { collection, doc, getDoc, onSnapshot, orderBy, query, where } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
-import { FlatList, StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Appbar, Card, Text } from 'react-native-paper';
-import AttendanceDetailModal from '../../components/AttendanceDetailModal';
-import { db } from '../../firebaseConfig';
+interface AttendanceRecord {
+  id: string;
+  studentName: string;
+  timestamp: {
+    seconds: number;
+    nanoseconds: number;
+  };
+}
 
-// Interfaces...
-interface AttendanceRecord { id: string; date: string; presentStudentIds: string[]; }
-interface Student { id: string; fullName: string; studentId: string; }
-interface Course { studentIds: string[]; }
+interface Course {
+  name: string;
+}
 
-const AttendanceHistoryScreen = () => {
+interface SectionData {
+  title: string;
+  data: AttendanceRecord[];
+}
+
+export default function AttendanceHistoryScreen() {
   const { courseId } = useLocalSearchParams<{ courseId: string }>();
   const router = useRouter();
-
-  const [records, setRecords] = useState<AttendanceRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  
-  // Estados para el modal
-  const [modalVisible, setModalVisible] = useState(false);
-  const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(null);
-  const [presentStudents, setPresentStudents] = useState<Student[]>([]);
-  const [absentStudents, setAbsentStudents] = useState<Student[]>([]);
-  const [isLoadingModal, setIsLoadingModal] = useState(false);
+  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const [course, setCourse] = useState<Course | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!courseId) return;
-    const q = query(collection(db, 'attendanceRecords'), where('courseId', '==', courseId), orderBy('date', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedRecords = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AttendanceRecord));
-      setRecords(fetchedRecords);
-      setIsLoading(false);
+
+    // Obtener nombre del curso
+    const courseRef = doc(db, 'courses', courseId);
+    const unsubscribeCourse = onSnapshot(courseRef, (doc) => {
+      if (doc.exists()) setCourse(doc.data() as Course);
     });
-    return () => unsubscribe();
+
+    // Consulta para obtener el historial de asistencia, ordenado por fecha
+    const attendanceQuery = query(
+      collection(db, 'attendance'),
+      where('courseId', '==', courseId),
+      orderBy('timestamp', 'desc') // Ordenar por más reciente primero
+    );
+
+    const unsubscribeAttendance = onSnapshot(attendanceQuery, (snapshot) => {
+      const attendanceList = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as AttendanceRecord));
+      setAttendance(attendanceList);
+      setLoading(false);
+    }, (error) => {
+      console.error("ERROR: Firestore query failed. This is likely due to a missing index. Please check the console for a link to create it.", error);
+      setLoading(false);
+    });
+
+    return () => {
+      unsubscribeCourse();
+      unsubscribeAttendance();
+    };
   }, [courseId]);
 
-  const handleShowDetails = async (record: AttendanceRecord) => {
-    setSelectedRecord(record);
-    setIsLoadingModal(true);
-    setModalVisible(true);
+  // Agrupar los registros de asistencia por fecha
+  const sections = useMemo(() => {
+    const grouped: { [key: string]: AttendanceRecord[] } = attendance.reduce((acc, record) => {
+      const date = new Date(record.timestamp.seconds * 1000);
+      const dateString = date.toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' });
+      
+      if (!acc[dateString]) {
+        acc[dateString] = [];
+      }
+      acc[dateString].push(record);
+      return acc;
+    }, {} as { [key: string]: AttendanceRecord[] });
 
-    // 1. Obtener la lista completa de estudiantes del curso
-    const courseRef = doc(db, 'courses', courseId!);
-    const courseSnap = await getDoc(courseRef);
-    if (!courseSnap.exists()) return;
-    const allStudentIds = (courseSnap.data() as Course).studentIds;
+    return Object.keys(grouped).map(date => ({
+      title: date,
+      data: grouped[date],
+    }));
+  }, [attendance]);
 
-    const studentPromises = allStudentIds.map(id => getDoc(doc(db, 'students', id)));
-    const studentDocs = await Promise.all(studentPromises);
-    const allStudents = studentDocs.map(snap => ({ id: snap.id, ...snap.data() } as Student));
-
-    // 2. Separar en presentes y ausentes
-    const present = allStudents.filter(s => record.presentStudentIds.includes(s.studentId));
-    const absent = allStudents.filter(s => !record.presentStudentIds.includes(s.studentId));
-    
-    setPresentStudents(present);
-    setAbsentStudents(absent);
-    setIsLoadingModal(false);
-  };
-
-  if (isLoading) {
-    return <ActivityIndicator animating={true} size="large" style={styles.loader} />;
+  if (loading) {
+    return <View style={styles.centerScreen}><ActivityIndicator size="large" /></View>;
   }
 
   return (
-    <View style={styles.container}>
-      <Appbar.Header>
-        <Appbar.BackAction onPress={() => router.back()} />
-        <Appbar.Content title="Historial de Asistencia" />
-      </Appbar.Header>
-      <FlatList
-        data={records}
+    <SafeAreaView style={styles.container}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <View style={styles.header}>
+        <IconButton
+          icon="arrow-left"
+          iconColor="#333"
+          size={28}
+          onPress={() => router.back()}
+          style={styles.backButton}
+        />
+        <View style={styles.headerTitleContainer}>
+          <Title style={styles.courseTitle}>Historial de Asistencia</Title>
+          <Text style={styles.groupName}>{course?.name}</Text>
+        </View>
+      </View>
+      
+      <SectionList
+        sections={sections}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <Card style={styles.card} onPress={() => handleShowDetails(item)}>
-            <Card.Title
-              title={new Date(item.date).toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}
-              subtitle={`${item.presentStudentIds.length} Estudiantes Presentes`}
-              left={(props) => <Text {...props} style={{ fontSize: 24, marginLeft: 16 }}>📅</Text>}
-            />
-          </Card>
+          <View style={styles.itemContainer}>
+            <Avatar.Text size={40} label={item.studentName.charAt(0).toUpperCase()} style={styles.avatar} />
+            <View style={styles.itemTextContainer}>
+              <Text style={styles.studentName}>{item.studentName}</Text>
+              <Text style={styles.timestamp}>
+                {new Date(item.timestamp.seconds * 1000).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+              </Text>
+            </View>
+          </View>
         )}
-        ListEmptyComponent={<Text style={styles.emptyText}>No hay registros de asistencia.</Text>}
-        contentContainerStyle={{ padding: 16 }}
+        renderSectionHeader={({ section: { title, data } }) => (
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionHeaderText}>{title}</Text>
+            <Text style={styles.sectionHeaderCount}>{data.length} Asistencias</Text>
+          </View>
+        )}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No hay registros de asistencia para este curso todavía.</Text>
+          </View>
+        }
+        ItemSeparatorComponent={() => <Divider style={{ marginHorizontal: 20 }} />}
       />
-
-      {selectedRecord && (
-        <AttendanceDetailModal
-          visible={modalVisible}
-          onDismiss={() => setModalVisible(false)}
-          recordDate={selectedRecord.date}
-          presentStudents={presentStudents}
-          absentStudents={absentStudents}
-          courseId={courseId!}
-        />
-      )}
-    </View>
+    </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  card: { marginBottom: 12 },
-  emptyText: { textAlign: 'center', marginTop: 50, fontStyle: 'italic' },
+  container: { flex: 1, backgroundColor: '#f7f8fa' },
+  centerScreen: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f7f8fa' },
+  header: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', paddingBottom: 20, paddingTop: 10, paddingHorizontal: 10, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, },
+  backButton: { position: 'absolute', top: 5, left: 5, zIndex: 1, },
+  headerTitleContainer: { flex: 1, alignItems: 'center', },
+  courseTitle: { fontSize: 24, fontWeight: 'bold', color: '#333', },
+  groupName: { fontSize: 16, color: '#777', marginTop: 4, },
+  sectionHeader: {
+    backgroundColor: '#e9ecef',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  sectionHeaderText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#495057',
+  },
+  sectionHeaderCount: {
+    fontSize: 14,
+    color: '#6c757d',
+  },
+  itemContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#fff',
+  },
+  avatar: {
+    marginRight: 15,
+  },
+  itemTextContainer: {
+    flex: 1,
+  },
+  studentName: {
+    fontSize: 18,
+    fontWeight: '500',
+  },
+  timestamp: {
+    fontSize: 14,
+    color: '#888',
+  },
+  emptyContainer: {
+    flex: 1,
+    padding: 20,
+    marginTop: 40,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 18,
+    color: '#6c757d',
+    textAlign: 'center',
+  },
 });
-
-export default AttendanceHistoryScreen;

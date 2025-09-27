@@ -1,47 +1,42 @@
 // components/CourseCard.tsx
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+// CORRECCIÓN: Se importa ColorValue para el tipado correcto
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { ColorValue, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 
 interface Course {
   id: string;
   name: string;
   groupName: string;
-  // Añadimos un campo para el número de estudiantes
   studentCount?: number; 
 }
 
 interface CourseCardProps {
   course: Course;
-  // Usaremos un array de gradientes para dar variedad
-  gradient: string[]; 
+  // CORRECCIÓN: Se especifica un tipo más estricto para el array de colores
+  gradient: [ColorValue, ColorValue]; 
 }
 
 const CourseCard = ({ course, gradient }: CourseCardProps) => {
-  const router = useRouter();
-
   return (
-    <Pressable onPress={() => router.push(`/course/${course.id}`)}>
-      <View style={styles.shadowContainer}>
-        <LinearGradient colors={gradient} style={styles.card}>
-          <View style={styles.iconContainer}>
-            <MaterialCommunityIcons name="school" size={28} color="rgba(255, 255, 255, 0.8)" />
-          </View>
-          <View>
-            <Text style={styles.courseName}>{course.name}</Text>
-            <Text style={styles.groupName}>{course.groupName}</Text>
-          </View>
-          <View style={styles.footer}>
-            <Text style={styles.studentCount}>
-              {course.studentCount || 0} Estudiantes
-            </Text>
-          </View>
-        </LinearGradient>
-      </View>
-    </Pressable>
+    <View style={styles.shadowContainer}>
+      <LinearGradient colors={gradient} style={styles.card}>
+        <View style={styles.iconContainer}>
+          <MaterialCommunityIcons name="school" size={28} color="rgba(255, 255, 255, 0.8)" />
+        </View>
+        <View>
+          <Text style={styles.courseName}>{course.name}</Text>
+          <Text style={styles.groupName}>{course.groupName}</Text>
+        </View>
+        <View style={styles.footer}>
+          <Text style={styles.studentCount}>
+            {course.studentCount || 0} Estudiantes
+          </Text>
+        </View>
+      </LinearGradient>
+    </View>
   );
 };
 
