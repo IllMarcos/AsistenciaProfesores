@@ -1,11 +1,10 @@
 import { Link, useRouter } from 'expo-router';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import React, { useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
-import { auth } from '../firebaseConfig'; // Asegúrate de que la ruta sea correcta
-
-// Importamos los componentes de React Native Paper
+import { Alert, View } from 'react-native';
 import { ActivityIndicator, Button, Text, TextInput } from 'react-native-paper';
+import { auth } from '../firebaseConfig';
+import { authStyles } from '../styles/uth-styles'; // Importamos los nuevos estilos
 
 const LoginScreen = () => {
   const [email, setEmail] = useState('');
@@ -22,7 +21,6 @@ const LoginScreen = () => {
     setIsLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      // El layout raíz se encargará de la redirección al detectar el cambio de estado de auth.
     } catch (error: any) {
       let friendlyMessage = "Ocurrió un error al iniciar sesión.";
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
@@ -35,28 +33,30 @@ const LoginScreen = () => {
   };
 
   return (
-    <View style={styles.container}>
-       <Text variant="headlineLarge" style={styles.title}>Bienvenido</Text>
-       <Text variant="bodyMedium" style={styles.subtitle}>Inicia sesión para continuar</Text>
+    <View style={authStyles.container}>
+      <Text style={authStyles.title}>Bienvenido</Text>
+      <Text style={authStyles.subtitle}>Inicia sesión para continuar</Text>
 
-       <TextInput
+      <TextInput
         label="Correo Electrónico"
         value={email}
         onChangeText={setEmail}
-        mode="outlined"
-        style={styles.input}
+        mode="flat"
+        style={authStyles.input}
         keyboardType="email-address"
         autoCapitalize="none"
         left={<TextInput.Icon icon="email" />}
+        underlineColor="transparent"
       />
       <TextInput
         label="Contraseña"
         value={password}
         onChangeText={setPassword}
-        mode="outlined"
-        style={styles.input}
+        mode="flat"
+        style={authStyles.input}
         secureTextEntry
         left={<TextInput.Icon icon="lock" />}
+        underlineColor="transparent"
       />
       
       {isLoading ? (
@@ -66,7 +66,7 @@ const LoginScreen = () => {
           <Button
             mode="contained"
             onPress={handleLogin}
-            style={styles.button}
+            style={authStyles.button}
             labelStyle={{ paddingVertical: 5 }}
             disabled={isLoading}
           >
@@ -75,10 +75,10 @@ const LoginScreen = () => {
           
           <Link href="/register" asChild>
             <Button
-              style={styles.linkButton}
+              style={authStyles.linkButton}
               disabled={isLoading}
             >
-              ¿No tienes cuenta? Regístrate
+              <Text style={authStyles.linkText}>¿No tienes cuenta? Regístrate</Text>
             </Button>
           </Link>
         </>
@@ -86,14 +86,5 @@ const LoginScreen = () => {
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: '#f5f5f5' },
-  title: { fontWeight: 'bold', textAlign: 'center' },
-  subtitle: { textAlign: 'center', marginBottom: 30, color: 'gray' },
-  input: { marginBottom: 15 },
-  button: { marginTop: 20, borderRadius: 30 },
-  linkButton: { marginTop: 15 },
-});
 
 export default LoginScreen;

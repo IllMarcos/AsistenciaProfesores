@@ -1,121 +1,172 @@
 // app/(tabs)/index.tsx
-
-import { Link } from 'expo-router'; // Importamos Link para la navegación
-import { addDoc, collection, onSnapshot, query, where } from 'firebase/firestore';
+import AddCourseModal from '@/components/AddCourseModal';
+import CourseCard from '@/components/CourseCard';
+import EmptyState from '@/components/EmptyState';
+import { auth, db } from '@/firebaseConfig';
+import { User, onAuthStateChanged } from 'firebase/auth';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Appbar, Card, FAB, Text } from 'react-native-paper';
-import AddCourseModal from '../../components/AddCourseModal'; // Importamos el componente modal
-import { auth, db } from '../../firebaseConfig';
+import { ActivityIndicator, Avatar, FAB, Text } from 'react-native-paper';
 
-// Definimos una interfaz para la estructura de un curso
 interface Course {
   id: string;
   name: string;
   groupName: string;
-  schoolYear: string;
+  teacherName: string;
+  studentCount?: number;
 }
 
-export default function CoursesScreen() {
+// Paleta de gradientes para las tarjetas
+const gradients = [
+  ['#43cea2', '#185a9d'],
+  ['#ff5f6d', '#ffc371'],
+  ['#8e2de2', '#4a00e0'],
+  ['#00c6ff', '#0072ff'],
+  ['#f7971e', '#ffd200'],
+];
+
+export default function HomeScreen() {
+  const [modalVisible, setModalVisible] = useState(false);
   const [courses, setCourses] = useState<Course[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isModalVisible, setModalVisible] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Nos aseguramos de que el usuario esté autenticado antes de hacer la consulta
-    if (!auth.currentUser) {
-        setIsLoading(false);
-        return;
-    };
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setCurrentUser(user);
+        const q = query(collection(db, 'courses'), where('teacherId', '==', user.uid));
+        
+        const unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
+          const coursesList = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          } as Course));
+          setCourses(coursesList);
+          setLoading(false);
+        }, () => setLoading(false));
 
-    // Creamos una consulta para obtener solo los cursos del profesor actual
-    const q = query(collection(db, 'courses'), where('teacherId', '==', auth.currentUser.uid));
-
-    // onSnapshot crea un listener en tiempo real. ¡La lista se actualizará sola!
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const coursesData: Course[] = [];
-      querySnapshot.forEach((doc) => {
-        coursesData.push({ id: doc.id, ...doc.data() } as Course);
-      });
-      setCourses(coursesData);
-      setIsLoading(false);
-    }, (error) => {
-        // Manejo de errores de la consulta
-        console.error("Error al obtener los cursos: ", error);
-        setIsLoading(false);
+        return () => unsubscribeSnapshot();
+      } else {
+        setCurrentUser(null);
+        setCourses([]);
+        setLoading(false);
+      }
     });
-
-    // Limpiamos el listener al desmontar el componente para evitar fugas de memoria
-    return () => unsubscribe();
+    return () => unsubscribeAuth();
   }, []);
 
-  const handleSaveCourse = async (courseData: { name: string; groupName: string; schoolYear: string }) => {
-    if (!auth.currentUser) return;
-
-    try {
-      await addDoc(collection(db, 'courses'), {
-        ...courseData,
-        teacherId: auth.currentUser.uid,
-        studentIds: [], // Inicializamos la lista de estudiantes vacía
-      });
-      setModalVisible(false); // Cerramos el modal al guardar exitosamente
-    } catch (error) {
-      console.error("Error al guardar el curso: ", error);
-      // Aquí se podría mostrar un modal o notificación de error al usuario
-    }
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Buenos días';
+    if (hour < 18) return 'Buenas tardes';
+    return 'Buenas noches';
   };
 
-  if (isLoading) {
-    return <ActivityIndicator animating={true} size="large" style={styles.loader} />;
+  if (loading) {
+    return <View style={styles.centerScreen}><ActivityIndicator size="large" /></View>;
   }
 
   return (
     <View style={styles.container}>
-      <Appbar.Header>
-        <Appbar.Content title={`Mis Cursos (${courses.length})`} />
-      </Appbar.Header>
+      {/* --- Encabezado --- */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.greeting}>{getGreeting()}</Text>
+          <Text style={styles.userName}>{currentUser?.displayName || 'Profesor'}</Text>
+        </View>
+        <Avatar.Icon size={48} icon="account-circle" style={styles.avatar} />
+      </View>
 
+      {/* --- Lista de Cursos --- */}
       <FlatList
         data={courses}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <Link href={{ pathname: "/course/[courseId]", params: { courseId: item.id } }} asChild>
-            <Card style={styles.card}>
-              <Card.Title
-                title={item.name}
-                subtitle={`${item.groupName} - ${item.schoolYear}`}
-              />
-            </Card>
-          </Link>
+        renderItem={({ item, index }) => (
+          <CourseCard course={item} gradient={gradients[index % gradients.length]} />
         )}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text variant="headlineSmall">No tienes cursos</Text>
-            <Text variant="bodyMedium">Presiona el botón + para añadir tu primer curso.</Text>
-          </View>
-        }
-        contentContainerStyle={{ flexGrow: 1, paddingBottom: 80 }}
+        keyExtractor={(item) => item.id}
+        ListHeaderComponent={<Text style={styles.listTitle}>Mis Cursos</Text>}
+        ListEmptyComponent={<EmptyState />}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
       />
-
+      
+      {/* --- Botón Flotante --- */}
       <FAB
-        icon="plus"
         style={styles.fab}
+        icon="plus"
+        color="#fff"
         onPress={() => setModalVisible(true)}
       />
 
-      <AddCourseModal
-        visible={isModalVisible}
-        onDismiss={() => setModalVisible(false)}
-        onSave={handleSaveCourse}
-      />
+      {/* --- Modal --- */}
+      {currentUser && (
+        <AddCourseModal
+          visible={modalVisible}
+          onClose={() => setModalVisible(false)}
+          teacherId={currentUser.uid}
+          teacherName={currentUser.displayName || 'Profesor'}
+        />
+      )}
     </View>
   );
 }
 
+// Estilos completamente renovados
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  card: { marginHorizontal: 16, marginTop: 16, elevation: 2 },
-  fab: { position: 'absolute', margin: 16, right: 0, bottom: 0 },
-  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, textAlign: 'center' },
+  centerScreen: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f7f8fa' },
+  container: {
+    flex: 1,
+    backgroundColor: '#f7f8fa',
+  },
+  header: {
+    paddingTop: 60, // Mayor espacio para la barra de estado
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  greeting: {
+    fontSize: 18,
+    color: '#888',
+  },
+  userName: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  avatar: {
+    backgroundColor: '#e0e0e0',
+  },
+  listTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#444',
+    paddingHorizontal: 5,
+    marginBottom: 20,
+    marginTop: 10,
+  },
+  listContent: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 100, // Espacio amplio para el FAB
+  },
+  fab: {
+    position: 'absolute',
+    margin: 16,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#185a9d', // Un color del gradiente
+    borderRadius: 30,
+  },
 });

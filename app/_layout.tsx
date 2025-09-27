@@ -1,72 +1,65 @@
+// illmarcos/asistenciaprofesores/AsistenciaProfesores-d17df92ff6c53e8d731d43a6512c663c222178b3/app/_layout.tsx
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { onAuthStateChanged, User } from 'firebase/auth';
-import React, { useEffect, useState } from 'react';
-import { PaperProvider } from 'react-native-paper';
+import * as SplashScreen from 'expo-splash-screen';
+import { onAuthStateChanged } from 'firebase/auth';
+import { useEffect } from 'react';
+import { MD3LightTheme, PaperProvider } from 'react-native-paper';
+import 'react-native-reanimated';
 import { auth } from '../firebaseConfig';
 
-// El componente principal que maneja la lógica de enrutamiento
-const RootLayoutNav = () => {
-  const [user, setUser] = useState<User | null>(null);
-  const [initializing, setInitializing] = useState(true);
-  const segments = useSegments();
-  const router = useRouter();
-
-  useEffect(() => {
-    // Escucha los cambios en el estado de autenticación de Firebase
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      if (initializing) {
-        setInitializing(false);
-      }
-    });
-    
-    // Limpia el listener cuando el componente se desmonte para evitar fugas de memoria
-    return () => unsubscribe();
-  }, []);
-
-  // useEffect que se encarga de las redirecciones
-  useEffect(() => {
-    // No hacer nada mientras se verifica el estado inicial de autenticación
-    if (initializing) return;
-
-    // Verificamos si el primer segmento de la ruta es 'login' o 'register'.
-    const inAuthGroup = segments[0] === 'login' || segments[0] === 'register';
-
-    if (user && inAuthGroup) {
-      // Si el usuario está logueado pero está en la pantalla de login/registro,
-      // lo mandamos a la pantalla principal.
-      router.replace('/(tabs)');
-    } else if (!user && !inAuthGroup) {
-      // Si el usuario NO está logueado y NO está en una pantalla de auth,
-      // lo mandamos a la pantalla de login.
-      router.replace('/login');
-    }
-  }, [user, segments, initializing]);
-
-  // Mientras se verifica el estado de auth, no mostramos nada para evitar parpadeos
-  if (initializing) {
-    return null; 
-  }
-
-  // Define la estructura de navegación de la aplicación
-  return (
-    <Stack>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="login" options={{ headerShown: false }} />
-      <Stack.Screen name="register" options={{ presentation: 'modal', headerShown: false }} />
-      <Stack.Screen name="scanner" options={{ presentation: 'fullScreenModal', headerShown: false }} />
-      {/* 👇 NUEVAS PANTALLAS DE HISTORIAL REGISTRADAS 👇 */}
-      <Stack.Screen name="attendanceHistory/[courseId]" options={{ headerShown: false }} />
-      <Stack.Screen name="attendanceDetail/[recordId]" options={{ headerShown: false }} />
-    </Stack>
-  );
+const theme = {
+  ...MD3LightTheme, 
+  colors: {
+    ...MD3LightTheme.colors,
+    primary: '#4a90e2', 
+    accent: '#4a90e2',   
+  },
 };
 
-// El componente que se exporta y envuelve toda la app con el PaperProvider
+SplashScreen.preventAutoHideAsync();
+
 export default function RootLayout() {
+  const colorScheme = useColorScheme();
+  const router = useRouter();
+  const segments = useSegments();
+
+  // Ya no necesitamos 'loaded' o 'useFonts' aquí
+
+  useEffect(() => {
+    // Escondemos el Splash Screen después de un pequeño retraso para asegurar que todo cargue
+    const timer = setTimeout(() => {
+      SplashScreen.hideAsync();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, []);
+
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      const currentRoute = segments.length > 0 ? segments[segments.length - 1] : '';
+      const isAuthScreen = currentRoute === 'login' || currentRoute === 'register';
+
+      if (user && isAuthScreen) {
+        router.replace('/');
+      } else if (!user && !isAuthScreen) {
+        router.replace('/login');
+      }
+    });
+    return () => unsubscribe();
+  }, [segments]);
+
   return (
-    <PaperProvider>
-      <RootLayoutNav />
+    <PaperProvider theme={theme}>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <Stack>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="+not-found" />
+          <Stack.Screen name="login" options={{ headerShown: false }} />
+          <Stack.Screen name="register" options={{ headerShown: false }} />
+        </Stack>
+      </ThemeProvider>
     </PaperProvider>
   );
 }
