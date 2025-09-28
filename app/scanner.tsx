@@ -9,10 +9,21 @@ import React, { useEffect, useState } from 'react';
 import { Alert, Button, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ActivityIndicator, IconButton } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
+// Se importa la librería para forzar la zona horaria
+import { formatInTimeZone } from 'date-fns-tz';
 
 type ScanStatus = 'success' | 'already_scanned' | 'not_in_course' | 'invalid_qr';
 interface ScanResult { status: ScanStatus; studentName?: string; }
 interface Student { id: string; name: string; }
+
+// --- FUNCIÓN CLAVE CON ZONA HORARIA ESPECÍFICA ---
+const getLocalDateString = () => {
+  const now = new Date();
+  // Usamos explícitamente la zona horaria de Mazatlán (GMT-7)
+  const timeZone = 'America/Mazatlan'; 
+  // Formateamos la fecha actual en esa zona horaria específica, garantizando el día correcto
+  return formatInTimeZone(now, timeZone, 'yyyy-MM-dd'); 
+};
 
 export default function ScannerScreen() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -32,17 +43,13 @@ export default function ScannerScreen() {
       try {
         const { sound } = await Audio.Sound.createAsync(require('../../assets/sounds/success.mp3'));
         setSound(sound);
-      } catch (error) {
-        console.log("No se pudo cargar el sonido.", error);
-      }
+      } catch (error) { console.log("No se pudo cargar el sonido.", error); }
     }
     loadSound();
     return sound ? () => { sound.unloadAsync(); } : undefined;
   }, []);
   
-  async function playSound() {
-    await sound?.replayAsync();
-  }
+  async function playSound() { await sound?.replayAsync(); }
 
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
     if (scanned) return;
@@ -59,14 +66,24 @@ export default function ScannerScreen() {
         return;
       }
       const studentName = studentDoc.data().name;
-      const today = new Date().toISOString().split('T')[0];
 
-      const attendanceQuery = query(collection(db, 'attendance'), where('studentId', '==', studentId), where('courseId', '==', courseId), where('date', '==', today));
+      // Usamos la nueva función con zona horaria para obtener la fecha local correcta
+      const today = getLocalDateString();
+
+      const attendanceQuery = query(
+        collection(db, 'attendance'),
+        where('studentId', '==', studentId),
+        where('courseId', '==', courseId),
+        where('date', '==', today)
+      );
       const querySnapshot = await getDocs(attendanceQuery);
 
       if (querySnapshot.empty) {
         await addDoc(collection(db, 'attendance'), {
-          studentId, studentName, courseId, date: today, timestamp: new Date(), status: 'presente'
+          studentId, studentName, courseId, 
+          date: today, 
+          timestamp: new Date(), 
+          status: 'presente'
         });
         setBorderColor('#28a745');
         setScanResult({ status: 'success', studentName });
@@ -91,7 +108,7 @@ export default function ScannerScreen() {
   const handleFinishAndSaveAbsences = async () => {
     setIsFinishing(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getLocalDateString();
       
       const allStudentsQuery = query(collection(db, 'students'), where('courseId', '==', courseId));
       const allStudentsSnapshot = await getDocs(allStudentsQuery);
@@ -108,12 +125,8 @@ export default function ScannerScreen() {
         absentStudents.forEach(student => {
           const newAttendanceRef = doc(collection(db, 'attendance'));
           batch.set(newAttendanceRef, {
-            studentId: student.id,
-            studentName: student.name,
-            courseId,
-            date: today,
-            timestamp: new Date(),
-            status: 'ausente'
+            studentId: student.id, studentName: student.name, courseId, date: today,
+            timestamp: new Date(), status: 'ausente'
           });
         });
         await batch.commit();
@@ -130,11 +143,7 @@ export default function ScannerScreen() {
     }
   };
 
-  useEffect(() => {
-    if (!permission) {
-        requestPermission();
-    }
-  }, [permission]);
+  useEffect(() => { if (!permission) { requestPermission(); } }, [permission]);
 
   if (!permission) { return <View />; }
   if (!permission.granted) { 
@@ -184,9 +193,7 @@ export default function ScannerScreen() {
         {!scanResult && (
             <View style={styles.footer}>
                 <Pressable style={styles.finishButton} onPress={handleFinishAndSaveAbsences} disabled={isFinishing}>
-                    {isFinishing ? (
-                        <ActivityIndicator color="#fff" />
-                    ) : (
+                    {isFinishing ? ( <ActivityIndicator color="#fff" /> ) : (
                         <>
                             <MaterialCommunityIcons name="check-all" size={24} color="#fff" />
                             <Text style={styles.finishButtonText}>Finalizar y Guardar Faltas</Text>

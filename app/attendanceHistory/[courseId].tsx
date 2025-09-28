@@ -1,34 +1,53 @@
 // app/attendanceHistory/[courseId].tsx
 import { db } from '@/firebaseConfig';
-import { addMonths, eachDayOfInterval, endOfMonth, format, getMonth, getYear, startOfMonth, subMonths } from 'date-fns';
-import { es } from 'date-fns/locale';
-import * as FileSystem from 'expo-file-system/legacy';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import * as Sharing from 'expo-sharing';
 import { collection, doc, getDoc, getDocs, onSnapshot, orderBy, query, QueryDocumentSnapshot, where } from 'firebase/firestore';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, SectionList, StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Avatar, Divider, IconButton, Text, Title } from 'react-native-paper';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Alert, FlatList, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Avatar, Card, Divider, IconButton, Text, Title } from 'react-native-paper';
+
+import { addMonths, eachDayOfInterval, endOfMonth, format, getMonth, getYear, startOfMonth, subMonths } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { cacheDirectory, EncodingType, writeAsStringAsync } from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { utils, write } from 'xlsx';
 
 interface Student { id: string; name: string; }
-// Se añade la propiedad 'status'
 interface AttendanceRecord { id: string; studentId: string; studentName: string; timestamp: { seconds: number; }; status: 'presente' | 'ausente'; }
 interface Course { name: string; groupName: string; teacherName: string; }
+
+interface DaySection {
+  title: string;
+  data: AttendanceRecord[];
+}
+
+// Componente para las tarjetas de estadísticas
+const StatCard = ({ title, value, icon }: { title: string, value: string | number, icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'] }) => (
+    <View style={styles.statCard}>
+        <MaterialCommunityIcons name={icon} size={32} color="#185a9d" />
+        <View style={styles.statTextContainer}>
+            <Text style={styles.statValue}>{value}</Text>
+            <Text style={styles.statTitle}>{title}</Text>
+        </View>
+    </View>
+);
 
 export default function AttendanceHistoryScreen() {
   const { courseId } = useLocalSearchParams<{ courseId: string }>();
   const router = useRouter();
-  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [course, setCourse] = useState<Course | null>(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
+  
+  const [expandedCard, setExpandedCard] = useState<string | null>(null);
 
   useEffect(() => {
     if (!courseId) return;
+
     const courseRef = doc(db, 'courses', courseId);
     const studentsQuery = query(collection(db, 'students'), where('courseId', '==', courseId), orderBy('name'));
     
@@ -41,18 +60,19 @@ export default function AttendanceHistoryScreen() {
     const attendanceQuery = query(collection(db, 'attendance'), where('courseId', '==', courseId), orderBy('timestamp', 'desc'));
     const unsubscribeAttendance = onSnapshot(attendanceQuery, (snapshot) => {
       const attendanceList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AttendanceRecord));
-      setAttendance(attendanceList);
+      setAllAttendance(attendanceList);
       setLoading(false);
     }, (error) => {
       console.error("ERROR: Firestore query failed.", error);
       setLoading(false);
     });
+
     return () => unsubscribeAttendance();
   }, [courseId]);
 
   const handleExport = async () => {
     if (students.length === 0) {
-      Alert.alert("No hay estudiantes", "Añada estudiantes para poder exportar.");
+      Alert.alert("No hay estudiantes", "Añada estudiantes al curso para poder exportar.");
       return;
     }
     setExporting(true);
@@ -61,7 +81,7 @@ export default function AttendanceHistoryScreen() {
     const monthName = format(selectedDate, 'MMMM', { locale: es }).toUpperCase();
     const daysInMonth = eachDayOfInterval({ start: startOfMonth(selectedDate), end: endOfMonth(selectedDate) });
 
-    const monthlyAttendance = attendance.filter(record => {
+    const monthlyAttendance = allAttendance.filter(record => {
       const recordDate = new Date(record.timestamp.seconds * 1000);
       return getYear(recordDate) === year && getMonth(recordDate) === month;
     });
@@ -86,22 +106,22 @@ export default function AttendanceHistoryScreen() {
     });
 
     const ws_data = [
-      ["SUBSECRETARIA DE EDUCACIÓN BÁSICA"], ["DEPARTAMENTO DE EDUCACIÓN PARA ADULTOS"],
-      ["SUPERVISIÓN DE MISIONES CULTURALES ZONA 08"], ["REGISTRO DE ASISTENCIA MENSUAL"], [],
-      [`Misión Cultural #4`, null, null, `Localidad: Adolfo Ruiz Cortines`],
-      [`Clave C.T: 25HMC0010J`, null, null, `Ciclo Escolar: 2024-2025`],
-      [`Estado: Sinaloa`, null, null, `Especialidad: ${course?.name}`], [],
-      [`GRUPO: ${course?.groupName}`], [`MES: ${monthName}`], header, ...data
+        ["SUBSECRETARIA DE EDUCACIÓN BÁSICA"], ["DEPARTAMENTO DE EDUCACIÓN PARA ADULTOS"],
+        ["SUPERVISIÓN DE MISIONES CULTURALES ZONA 08"], ["REGISTRO DE ASISTENCIA MENSUAL"], [],
+        [`Misión Cultural #4`, null, null, `Localidad: Adolfo Ruiz Cortines`],
+        [`Clave C.T: 25HMC0010J`, null, null, `Ciclo Escolar: 2024-2025`],
+        [`Estado: Sinaloa`, null, null, `Especialidad: ${course?.name}`], [],
+        [`GRUPO: ${course?.groupName}`], [`MES: ${monthName}`], header, ...data
     ];
     
     const ws = utils.aoa_to_sheet(ws_data);
     const wb = utils.book_new();
     utils.book_append_sheet(wb, ws, `Asistencia ${monthName}`);
     const wbout = write(wb, { type: 'base64', bookType: 'xlsx' });
-    const uri = FileSystem.cacheDirectory + `${course?.name}_${monthName}.xlsx`;
+    const uri = cacheDirectory + `${course?.name}_${monthName}.xlsx`;
 
     try {
-      await FileSystem.writeAsStringAsync(uri, wbout, { encoding: FileSystem.EncodingType.Base64 });
+      await writeAsStringAsync(uri, wbout, { encoding: EncodingType.Base64 });
       await Sharing.shareAsync(uri, {
         mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         dialogTitle: 'Exportar Asistencia', UTI: 'com.microsoft.excel.xlsx'
@@ -114,10 +134,14 @@ export default function AttendanceHistoryScreen() {
     }
   };
 
-  const sections = useMemo(() => {
-    // Solo mostrar las asistencias 'presentes' en la vista de la app
-    const presentAttendance = attendance.filter(record => record.status === 'presente');
-    const grouped: { [key: string]: AttendanceRecord[] } = presentAttendance.reduce((acc, record) => {
+  const { dailySections, totalAttendances } = useMemo(() => {
+    const filtered = allAttendance.filter(record => {
+        const recordDate = new Date(record.timestamp.seconds * 1000);
+        return getYear(recordDate) === getYear(selectedDate) && getMonth(recordDate) === getMonth(selectedDate);
+    });
+
+    const present = filtered.filter(record => record.status === 'presente');
+    const grouped: { [key: string]: AttendanceRecord[] } = present.reduce((acc, record) => {
       const date = new Date(record.timestamp.seconds * 1000);
       const dateString = date.toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' });
       if (!acc[dateString]) acc[dateString] = [];
@@ -125,15 +149,30 @@ export default function AttendanceHistoryScreen() {
       return acc;
     }, {} as { [key: string]: AttendanceRecord[] });
 
-    return Object.keys(grouped).map(date => ({ title: date, data: grouped[date] }));
-  }, [attendance]);
+    const sections = Object.keys(grouped).map(date => ({ title: date, data: grouped[date] }));
+    
+    if (sections.length > 0 && !sections.find(sec => sec.title === expandedCard)) {
+        setExpandedCard(sections[0].title);
+    } else if (sections.length === 0) {
+        setExpandedCard(null);
+    }
+    
+    return {
+      dailySections: sections,
+      totalAttendances: present.length,
+    };
+  }, [allAttendance, selectedDate]);
+
+  const toggleCard = (title: string) => {
+    setExpandedCard(current => (current === title ? null : title));
+  };
 
   if (loading) {
     return <View style={styles.centerScreen}><ActivityIndicator animating={true} size="large" /></View>;
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.header}>
         <IconButton icon="arrow-left" iconColor="#333" size={28} onPress={() => router.back()} />
@@ -141,7 +180,7 @@ export default function AttendanceHistoryScreen() {
           <Title style={styles.courseTitle}>Historial</Title>
           <Text style={styles.groupName}>{course?.name}</Text>
         </View>
-        <IconButton icon="export-variant" iconColor="#185a9d" size={28} onPress={handleExport} disabled={exporting} />
+        <IconButton icon="export-variant" iconColor="#185a9d" size={28} onPress={handleExport} disabled={exporting || students.length === 0} />
       </View>
       
       <View style={styles.monthSelectorContainer}>
@@ -152,50 +191,132 @@ export default function AttendanceHistoryScreen() {
 
       {exporting && <ActivityIndicator animating={true} style={{ marginVertical: 10 }} />}
       
-      <SectionList
-        sections={sections}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <View style={styles.itemContainer}>
-            <Avatar.Text size={40} label={item.studentName.charAt(0).toUpperCase()} style={styles.avatar} />
-            <View style={styles.itemTextContainer}>
-              <Text style={styles.studentName}>{item.studentName}</Text>
-              <Text style={styles.timestamp}>{new Date(item.timestamp.seconds * 1000).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</Text>
-            </View>
+      <FlatList
+        data={dailySections}
+        keyExtractor={(item) => item.title}
+        ListHeaderComponent={
+          <View style={styles.statsContainer}>
+            <StatCard title="Total Asistencias del Mes" value={totalAttendances} icon="account-check" />
           </View>
-        )}
-        renderSectionHeader={({ section: { title, data } }) => (
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionHeaderText}>{title}</Text>
-            <Text style={styles.sectionHeaderCount}>{data.length} Asistencias</Text>
-          </View>
-        )}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}><Text style={styles.emptyText}>No hay registros de asistencia.</Text></View>
         }
-        ItemSeparatorComponent={() => <Divider style={{ marginHorizontal: 20 }} />}
+        renderItem={({ item }) => {
+          const isExpanded = expandedCard === item.title;
+          return (
+            <Card style={styles.dayCard}>
+              <TouchableOpacity activeOpacity={0.8} onPress={() => toggleCard(item.title)}>
+                <Card.Title
+                  title={item.title}
+                  titleStyle={styles.cardTitle}
+                  subtitle={`${item.data.length} Asistencias`}
+                  right={(props) => <IconButton {...props} icon={isExpanded ? 'chevron-up' : 'chevron-down'} />}
+                />
+              </TouchableOpacity>
+              {isExpanded && (
+                <Card.Content>
+                  <Divider style={{ marginVertical: 10 }} />
+                  {item.data.map((record) => (
+                    <View key={record.id} style={styles.itemContainer}>
+                      <Avatar.Text size={40} label={record.studentName.charAt(0).toUpperCase()} style={styles.avatar} />
+                      <View style={styles.itemTextContainer}>
+                        <Text style={styles.studentName}>{record.studentName}</Text>
+                        <Text style={styles.timestamp}>{new Date(record.timestamp.seconds * 1000).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </Card.Content>
+              )}
+            </Card>
+          );
+        }}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No hay registros de asistencia para el mes seleccionado.</Text>
+          </View>
+        }
+        contentContainerStyle={styles.listContent}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f7f8fa' },
-  centerScreen: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f7f8fa' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fff', paddingVertical: 10, paddingHorizontal: 10, elevation: 4, },
-  headerTitleContainer: { flex: 1, alignItems: 'center', marginLeft: -30 },
+  container: { flex: 1, backgroundColor: '#f0f2f5' },
+  centerScreen: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0f2f5' },
+  // CORRECCIÓN FINAL: Se ajusta el header para que coincida 100% con las otras pantallas
+  header: {
+    paddingTop: 50,
+    paddingHorizontal: 10,
+    paddingBottom: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff', 
+    borderBottomLeftRadius: 30, 
+    borderBottomRightRadius: 30,
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 5 }, 
+    shadowOpacity: 0.1, 
+    shadowRadius: 10, 
+    elevation: 10,
+  },
+  headerTitleContainer: { 
+    flex: 1,
+    alignItems: 'center',
+    marginHorizontal: 30,
+  },
   courseTitle: { fontSize: 24, fontWeight: 'bold', color: '#333' },
   groupName: { fontSize: 16, color: '#777', marginTop: 4 },
-  monthSelectorContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', paddingVertical: 5, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  monthText: { fontSize: 18, fontWeight: 'bold', textTransform: 'capitalize', },
-  sectionHeader: { backgroundColor: '#e9ecef', paddingVertical: 10, paddingHorizontal: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  sectionHeaderText: { fontSize: 16, fontWeight: 'bold', color: '#495057' },
-  sectionHeaderCount: { fontSize: 14, color: '#6c757d' },
-  itemContainer: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: '#fff' },
-  avatar: { marginRight: 15 },
-  itemTextContainer: { flex: 1 },
-  studentName: { fontSize: 18, fontWeight: '500' },
-  timestamp: { fontSize: 14, color: '#888' },
+  monthSelectorContainer: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    paddingVertical: 5,
+    // Se elimina la línea de borde inferior
+  },
+  monthText: { fontSize: 18, fontWeight: 'bold', textTransform: 'capitalize', color: '#185a9d' },
+  statsContainer: {
+    marginBottom: 16,
+    paddingHorizontal: 8,
+  },
+  statCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    elevation: 3,
+    flexDirection: 'row',
+  },
+  statTextContainer: {
+    marginLeft: 16,
+  },
+  statValue: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  statTitle: {
+    fontSize: 14,
+    color: '#666',
+  },
+  listContent: {
+      paddingHorizontal: 16,
+      paddingTop: 16,
+  },
+  dayCard: {
+      marginBottom: 12,
+      elevation: 2,
+      backgroundColor: '#fff',
+      borderRadius: 12,
+  },
+  cardTitle: {
+      fontSize: 18,
+      fontWeight: 'bold',
+  },
+  itemContainer: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
+  avatar: { marginRight: 15, },
+  itemTextContainer: { flex: 1, },
+  studentName: { fontSize: 16, fontWeight: '500', color: '#333' },
+  timestamp: { fontSize: 14, color: '#888', },
   emptyContainer: { flex: 1, padding: 20, marginTop: 40, alignItems: 'center' },
   emptyText: { fontSize: 18, color: '#6c757d', textAlign: 'center' },
 });
