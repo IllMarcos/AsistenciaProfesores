@@ -219,7 +219,7 @@ const styles = StyleSheet.create({
   resultContainer: { backgroundColor: '#fff', padding: 25, paddingBottom: 40, borderTopLeftRadius: 20, borderTopRightRadius: 20, alignItems: 'center', },
   resultTitle: { fontSize: 24, fontWeight: 'bold', marginTop: 10, },
   resultSubtitle: { fontSize: 18, color: '#666', textAlign: 'center', marginVertical: 5, },
-  footer: { padding: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20, backgroundColor: 'rgba(0,0,0,0.5)', },
+  footer: { padding: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20},
   finishButton: { backgroundColor: '#007bff', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 15, borderRadius: 30, elevation: 2, },
   finishButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginLeft: 10, },
 });
