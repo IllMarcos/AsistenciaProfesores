@@ -1,27 +1,23 @@
 // app/scanner.tsx
+import ConfirmationModal, { ConfirmationStatus } from '@/components/ConfirmationModal';
 import { db } from '@/firebaseConfig';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { formatInTimeZone } from 'date-fns-tz';
 import { Audio } from 'expo-av';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import { CameraView, PermissionResponse, useCameraPermissions } from 'expo-camera';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { addDoc, collection, doc, getDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
-import { Alert, Button, Pressable, StyleSheet, Text, View } from 'react-native';
-import { ActivityIndicator, IconButton } from 'react-native-paper';
+import { Button, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, IconButton, Portal } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
-// Se importa la librería para forzar la zona horaria
-import { formatInTimeZone } from 'date-fns-tz';
 
 type ScanStatus = 'success' | 'already_scanned' | 'not_in_course' | 'invalid_qr';
 interface ScanResult { status: ScanStatus; studentName?: string; }
-interface Student { id: string; name: string; }
 
-// --- FUNCIÓN CLAVE CON ZONA HORARIA ESPECÍFICA ---
 const getLocalDateString = () => {
   const now = new Date();
-  // Usamos explícitamente la zona horaria de Mazatlán (GMT-7)
   const timeZone = 'America/Mazatlan'; 
-  // Formateamos la fecha actual en esa zona horaria específica, garantizando el día correcto
   return formatInTimeZone(now, timeZone, 'yyyy-MM-dd'); 
 };
 
@@ -33,6 +29,12 @@ export default function ScannerScreen() {
   const [borderColor, setBorderColor] = useState('#fff');
   const [sound, setSound] = useState<Audio.Sound>();
   const [isFinishing, setIsFinishing] = useState(false);
+  
+  const [confirmationState, setConfirmationState] = useState<{
+    visible: boolean;
+    status: ConfirmationStatus;
+    message: string;
+  }>({ visible: false, status: 'loading', message: '' });
   
   const params = useLocalSearchParams();
   const router = useRouter();
@@ -47,7 +49,7 @@ export default function ScannerScreen() {
     }
     loadSound();
     return sound ? () => { sound.unloadAsync(); } : undefined;
-  }, []);
+  }, [sound]);
   
   async function playSound() { await sound?.replayAsync(); }
 
@@ -66,10 +68,7 @@ export default function ScannerScreen() {
         return;
       }
       const studentName = studentDoc.data().name;
-
-      // Usamos la nueva función con zona horaria para obtener la fecha local correcta
       const today = getLocalDateString();
-
       const attendanceQuery = query(
         collection(db, 'attendance'),
         where('studentId', '==', studentId),
@@ -107,17 +106,15 @@ export default function ScannerScreen() {
   
   const handleFinishAndSaveAbsences = async () => {
     setIsFinishing(true);
+    setConfirmationState({ visible: true, status: 'loading', message: 'Guardando faltas...' });
     try {
       const today = getLocalDateString();
-      
       const allStudentsQuery = query(collection(db, 'students'), where('courseId', '==', courseId));
       const allStudentsSnapshot = await getDocs(allStudentsQuery);
       const allStudentIds = allStudentsSnapshot.docs.map(d => ({id: d.id, name: d.data().name as string}));
-
       const presentStudentsQuery = query(collection(db, 'attendance'), where('courseId', '==', courseId), where('date', '==', today));
       const presentStudentsSnapshot = await getDocs(presentStudentsQuery);
       const presentStudentIds = new Set(presentStudentsSnapshot.docs.map(d => d.data().studentId));
-
       const absentStudents = allStudentIds.filter(student => !presentStudentIds.has(student.id));
 
       if (absentStudents.length > 0) {
@@ -131,26 +128,21 @@ export default function ScannerScreen() {
         });
         await batch.commit();
       }
-
-      Alert.alert("Lista Finalizada", `Se ha completado el pase de lista. ${absentStudents.length} estudiantes fueron marcados como ausentes.`);
-      router.back();
-
+      setConfirmationState({ visible: true, status: 'success', message: `¡Lista Finalizada!\nSe guardaron ${absentStudents.length} faltas.` });
     } catch (error) {
       console.error("Error al finalizar la lista:", error);
-      Alert.alert("Error", "No se pudieron guardar las faltas.");
-    } finally {
-      setIsFinishing(false);
+      setConfirmationState({ visible: true, status: 'error', message: 'Error al Guardar' });
     }
   };
 
-  useEffect(() => { if (!permission) { requestPermission(); } }, [permission]);
+  useEffect(() => { if (!permission) { requestPermission(); } }, [permission, requestPermission]);
 
   if (!permission) { return <View />; }
   if (!permission.granted) { 
-      return (
+    return (
       <View style={styles.permissionContainer}>
         <Text style={{ textAlign: 'center', fontSize: 18, color: '#333' }}>Necesitamos tu permiso para usar la cámara</Text>
-        <Button onPress={requestPermission} title="Conceder Permiso" />
+        <Button onPress={requestPermission as (() => Promise<PermissionResponse> | void | null)} title="Conceder Permiso" />
       </View>
     );
   }
@@ -190,7 +182,8 @@ export default function ScannerScreen() {
           </View>
         )}
 
-        {!scanResult && (
+        {/* --- MEJORA: El botón ahora se oculta cuando el modal de confirmación está activo --- */}
+        {!scanResult && !confirmationState.visible && (
             <View style={styles.footer}>
                 <Pressable style={styles.finishButton} onPress={handleFinishAndSaveAbsences} disabled={isFinishing}>
                     {isFinishing ? ( <ActivityIndicator color="#fff" /> ) : (
@@ -203,6 +196,23 @@ export default function ScannerScreen() {
             </View>
         )}
       </View>
+
+      <Portal>
+        <ConfirmationModal
+          visible={confirmationState.visible}
+          status={confirmationState.status}
+          message={confirmationState.message}
+          autoDismissDelay={2500} // --- MEJORA: El mensaje dura 2.5 segundos ---
+          onDismiss={() => {
+            setConfirmationState({ ...confirmationState, visible: false });
+            setIsFinishing(false);
+            if (confirmationState.status === 'success') {
+              router.back();
+            }
+          }}
+        />
+      </Portal>
+
     </SafeAreaView>
   );
 }

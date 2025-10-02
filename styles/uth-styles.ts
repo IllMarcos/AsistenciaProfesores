@@ -1,51 +1,82 @@
-// illmarcos/asistenciaprofesores/AsistenciaProfesores-d17df92ff6c53e8d731d43a6512c663c222178b3/styles/auth-styles.ts
 import { StyleSheet } from 'react-native';
+import { heightPercentageToDP as hp, widthPercentageToDP as wp } from 'react-native-responsive-screen';
 
 export const authStyles = StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'center',
-    padding: 20,
-    backgroundColor: '#e0e5ec', // Un fondo claro y suave
+    padding: wp('8%'),
+    backgroundColor: '#e0e5ec',
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: hp('5%'),
+  },
+  logo: {
+    width: wp('30%'),
+    height: wp('30%'),
   },
   title: {
-    fontSize: 42,
-    fontWeight: 'bold',
+    fontSize: hp('4.5%'),
+    fontWeight: '700', // Un peso de fuente más moderno
     textAlign: 'center',
-    marginBottom: 10,
     color: '#3d3d3d',
+    marginBottom: hp('1%'),
   },
   subtitle: {
     textAlign: 'center',
-    marginBottom: 40,
+    marginBottom: hp('5%'),
     color: '#a0a5aa',
-    fontSize: 16,
+    fontSize: hp('2%'),
+  },
+  inputContainer: {
+    marginBottom: hp('2%'),
   },
   input: {
-    marginBottom: 20,
     backgroundColor: '#e0e5ec',
-    borderRadius: 15,
-    borderTopStartRadius: 15,
-    borderTopEndRadius: 15,
-    elevation: 0, // Remove default Android shadow
-    shadowOpacity: 0, // Remove default iOS shadow
+    // Neumorfismo: Sombra exterior e interior para efecto de relieve
+    shadowColor: '#ffffff',
+    shadowOffset: { width: -6, height: -6 },
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    // La sombra oscura
+    elevation: 10, // Para Android
+  },
+  helperText: {
+    fontSize: hp('1.7%'),
   },
   button: {
-    marginTop: 20,
+    marginTop: hp('3%'),
     borderRadius: 30,
-    paddingVertical: 8,
-    backgroundColor: '#4a90e2', // Un azul vibrante
+    paddingVertical: hp('1%'),
+    backgroundColor: '#4a90e2',
     shadowColor: '#b0c4de',
     shadowOffset: { width: 5, height: 5 },
     shadowOpacity: 1,
     shadowRadius: 10,
     elevation: 10,
   },
-  linkButton: {
-    marginTop: 15,
+  buttonLabel: {
+    fontWeight: 'bold',
+  },
+  linkButtonContainer: {
+    marginTop: hp('3%'),
+    alignItems: 'center',
   },
   linkText: {
     color: '#4a90e2',
+    fontSize: hp('1.9%'),
+  },
+  errorContainer: {
+    marginTop: hp('2%'),
+    backgroundColor: 'rgba(220, 53, 69, 0.1)',
+    padding: wp('3%'),
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  errorText: {
+    color: '#dc3545',
+    fontWeight: 'bold',
     textAlign: 'center',
   },
 });

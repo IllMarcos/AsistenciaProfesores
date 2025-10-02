@@ -6,6 +6,7 @@ import { collection, doc, getDoc, getDocs, onSnapshot, orderBy, query, QueryDocu
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, Avatar, Card, Divider, IconButton, Text, Title } from 'react-native-paper';
+import { heightPercentageToDP as hp, widthPercentageToDP as wp } from 'react-native-responsive-screen';
 
 import { addMonths, eachDayOfInterval, endOfMonth, format, getMonth, getYear, startOfMonth, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -242,81 +243,79 @@ export default function AttendanceHistoryScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f0f2f5' },
   centerScreen: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0f2f5' },
-  // CORRECCIÓN FINAL: Se ajusta el header para que coincida 100% con las otras pantallas
   header: {
-    paddingTop: 50,
-    paddingHorizontal: 10,
-    paddingBottom: 20,
+    paddingTop: hp('6%'),
+    paddingHorizontal: wp('2.5%'),
+    paddingBottom: hp('2.5%'),
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#fff', 
-    borderBottomLeftRadius: 30, 
-    borderBottomRightRadius: 30,
-    shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 5 }, 
-    shadowOpacity: 0.1, 
-    shadowRadius: 10, 
+    backgroundColor: '#fff',
+    borderBottomLeftRadius: wp('8%'),
+    borderBottomRightRadius: wp('8%'),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
     elevation: 10,
   },
-  headerTitleContainer: { 
+  headerTitleContainer: {
     flex: 1,
     alignItems: 'center',
-    marginHorizontal: 30,
+    marginHorizontal: wp('7%'),
   },
-  courseTitle: { fontSize: 24, fontWeight: 'bold', color: '#333' },
-  groupName: { fontSize: 16, color: '#777', marginTop: 4 },
-  monthSelectorContainer: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    paddingVertical: 5,
-    // Se elimina la línea de borde inferior
+  courseTitle: { fontSize: hp('3%'), fontWeight: 'bold', color: '#333' },
+  groupName: { fontSize: hp('2%'), color: '#777', marginTop: hp('0.5%') },
+  monthSelectorContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: hp('0.5%'),
   },
-  monthText: { fontSize: 18, fontWeight: 'bold', textTransform: 'capitalize', color: '#185a9d' },
+  monthText: { fontSize: hp('2.2%'), fontWeight: 'bold', textTransform: 'capitalize', color: '#185a9d' },
   statsContainer: {
-    marginBottom: 16,
-    paddingHorizontal: 8,
+    marginBottom: hp('2%'),
+    paddingHorizontal: wp('2%'),
   },
   statCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: wp('3%'),
+    padding: wp('4%'),
     alignItems: 'center',
     elevation: 3,
     flexDirection: 'row',
   },
   statTextContainer: {
-    marginLeft: 16,
+    marginLeft: wp('4%'),
   },
   statValue: {
-    fontSize: 22,
+    fontSize: hp('2.8%'),
     fontWeight: 'bold',
     color: '#333',
   },
   statTitle: {
-    fontSize: 14,
+    fontSize: hp('1.8%'),
     color: '#666',
   },
   listContent: {
-      paddingHorizontal: 16,
-      paddingTop: 16,
+      paddingHorizontal: wp('4%'),
+      paddingTop: hp('2%'),
   },
   dayCard: {
-      marginBottom: 12,
+      marginBottom: hp('1.5%'),
       elevation: 2,
       backgroundColor: '#fff',
-      borderRadius: 12,
+      borderRadius: wp('3%'),
   },
   cardTitle: {
-      fontSize: 18,
+      fontSize: hp('2.2%'),
       fontWeight: 'bold',
   },
-  itemContainer: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
-  avatar: { marginRight: 15, },
-  itemTextContainer: { flex: 1, },
-  studentName: { fontSize: 16, fontWeight: '500', color: '#333' },
-  timestamp: { fontSize: 14, color: '#888', },
-  emptyContainer: { flex: 1, padding: 20, marginTop: 40, alignItems: 'center' },
-  emptyText: { fontSize: 18, color: '#6c757d', textAlign: 'center' },
+  itemContainer: { flexDirection: 'row', alignItems: 'center', paddingVertical: hp('1%') },
+  avatar: { marginRight: wp('4%') },
+  itemTextContainer: { flex: 1 },
+  studentName: { fontSize: hp('2%'), fontWeight: '500', color: '#333' },
+  timestamp: { fontSize: hp('1.8%'), color: '#888' },
+  emptyContainer: { flex: 1, padding: wp('5%'), marginTop: hp('5%'), alignItems: 'center' },
+  emptyText: { fontSize: hp('2.2%'), color: '#6c757d', textAlign: 'center' },
 });
